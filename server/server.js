@@ -10,6 +10,7 @@ require('dotenv').config();
 const themes = require('./src/theme');
 const multer = require('multer');
 const { convertToMarkdown } = require('./src/converter');
+const { convertPdfToPptx } = require('./src/pdf_to_pptx');
 const { google } = require('googleapis');
 
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
@@ -165,6 +166,66 @@ app.post('/api/import/local', upload.single('file'), async (req, res) => {
         res.status(500).json({ error: error.message });
         // Cleanup if exists
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    }
+});
+
+app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const filePath = req.file.path;
+        const originalName = req.file.originalname;
+        const baseName = path.basename(originalName, path.extname(originalName));
+
+        console.log(`Importing PDF: ${originalName}`);
+
+        // 1. Convert PDF to PPTX
+        const pptxPath = await convertPdfToPptx(filePath, path.join(__dirname, 'uploads'));
+        
+        // 2. Upload to Drive as Google Slides
+        console.log('Authenticating with Google...');
+        const auth = await authorize();
+        const drive = google.drive({ version: 'v3', auth });
+
+        console.log('Uploading to Google Drive...');
+        const fileMetadata = {
+            name: baseName, // Use original filename as title
+            mimeType: 'application/vnd.google-apps.presentation' // Convert to Google Slides
+        };
+        
+        const media = {
+            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            body: fs.createReadStream(pptxPath)
+        };
+
+        const driveResponse = await drive.files.create({
+            resource: fileMetadata,
+            media: media,
+            fields: 'id, webViewLink'
+        });
+
+        const presentationId = driveResponse.data.id;
+        const webViewLink = driveResponse.data.webViewLink;
+
+        console.log(`Uploaded to Drive. ID: ${presentationId}`);
+
+        // Cleanup
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        if (fs.existsSync(pptxPath)) fs.unlinkSync(pptxPath);
+
+        res.json({ 
+            success: true, 
+            presentationId,
+            link: webViewLink
+        });
+
+    } catch (error) {
+        console.error('PDF Import error:', error);
+        // Cleanup
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(500).json({ error: error.message });
     }
 });
 

@@ -20,6 +20,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [selectedTheme, setSelectedTheme] = useState('default');
   const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash-exp');
+  const [googleSlidesId, setGoogleSlidesId] = useState(null);
   
   // UI State
   const [aspectRatio, setAspectRatio] = useState('16/9');
@@ -359,17 +360,35 @@ function App() {
       formData.append('file', file);
       
       setLoading(true);
+      setGoogleSlidesId(null); // Reset previous slides
+
       try {
-          const res = await fetch('/api/import/local', {
-              method: 'POST',
-              body: formData
-          });
-          const data = await res.json();
-          if (data.success) {
-              updateMarkdown(data.markdown);
-              setShowImportModal(false);
+          if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+              // Handle PDF Import
+              const res = await fetch('/api/import/pdf', {
+                  method: 'POST',
+                  body: formData
+              });
+              const data = await res.json();
+              if (data.success) {
+                  setGoogleSlidesId(data.presentationId);
+                  setShowImportModal(false);
+              } else {
+                  alert('PDF Import failed: ' + data.error);
+              }
           } else {
-              alert('Import failed: ' + data.error);
+              // Handle other files (Markdown, etc.)
+              const res = await fetch('/api/import/local', {
+                  method: 'POST',
+                  body: formData
+              });
+              const data = await res.json();
+              if (data.success) {
+                  updateMarkdown(data.markdown);
+                  setShowImportModal(false);
+              } else {
+                  alert('Import failed: ' + data.error);
+              }
           }
       } catch (err) {
           alert('Error: ' + err.message);
@@ -751,6 +770,28 @@ function App() {
     }
   };
 
+  // Preview Content
+  const previewContent = googleSlidesId ? (
+      <div className="google-slides-preview" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px', backgroundColor: '#f0f0f0', borderBottom: '1px solid #ccc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>Google Slides Preview</strong></span>
+              <button onClick={() => setGoogleSlidesId(null)} style={{ padding: '5px 10px', fontSize: '0.8em' }}>Close Preview</button>
+          </div>
+          <iframe 
+              src={`https://docs.google.com/presentation/d/${googleSlidesId}/embed?start=false&loop=false&delayms=3000`} 
+              frameBorder="0" 
+              width="100%" 
+              height="100%" 
+              allowFullScreen={true} 
+              mozallowfullscreen="true" 
+              webkitallowfullscreen="true"
+              style={{ flex: 1 }}
+          ></iframe>
+      </div>
+  ) : (
+      renderPreview(markdown)
+  );
+
   return (
     <div className="app-container">
       {/* Presentation Overlay */}
@@ -825,21 +866,23 @@ function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <h2>Markdown Editor</h2>
                 <div className="toolbar">
-                    <button 
-                        className={`tool-btn ${aspectRatio === '16/9' ? 'active' : ''}`} 
-                        onClick={() => setAspectRatio('16/9')} 
-                        title="16:9"
-                    >16:9</button>
-                    <button 
-                        className={`tool-btn ${aspectRatio === '4/3' ? 'active' : ''}`} 
-                        onClick={() => setAspectRatio('4/3')} 
-                        title="4:3"
-                    >4:3</button>
-                    <button 
-                        className={`tool-btn ${aspectRatio === '1/1' ? 'active' : ''}`} 
-                        onClick={() => setAspectRatio('1/1')} 
-                        title="1:1"
-                    >1:1</button>
+                    <select 
+                        value={aspectRatio}
+                        onChange={(e) => setAspectRatio(e.target.value)}
+                        style={{ 
+                            backgroundColor: '#444', 
+                            color: 'white', 
+                            border: '1px solid #555', 
+                            padding: '5px', 
+                            borderRadius: '4px',
+                            marginRight: '5px'
+                        }}
+                        title="Aspect Ratio"
+                    >
+                        <option value="16/9">16:9</option>
+                        <option value="4/3">4:3</option>
+                        <option value="1/1">1:1</option>
+                    </select>
                     <button 
                         className="tool-btn" 
                         onClick={() => setOrientation(prev => prev === 'landscape' ? 'portrait' : 'landscape')}
@@ -856,7 +899,7 @@ function App() {
                 📂 Import
             </button>
             <button onClick={handleConvert} disabled={loading} style={{ padding: '8px 12px', fontSize: '0.9em' }}>
-                {loading ? 'Converting...' : 'G.Slides'}
+                {loading ? 'Converting...' : 'Google Slides'}
             </button>
         </div>
         <div className="editor-toolbar" style={{ 
@@ -991,7 +1034,7 @@ function App() {
         
         {/* ... (Slides Container) */}
         <div className="slides-container">
-          {renderPreview(markdown)}
+          {previewContent}
         </div>
 
         <div className="chat-pane">
