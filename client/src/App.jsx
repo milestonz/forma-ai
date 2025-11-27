@@ -325,7 +325,7 @@ function App() {
     setLoading(true);
     setResult(null);
     try {
-      const response = await fetch('http://localhost:3001/api/convert', {
+      const response = await fetch('/api/convert', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -360,7 +360,7 @@ function App() {
       
       setLoading(true);
       try {
-          const res = await fetch('http://localhost:3001/api/import/local', {
+          const res = await fetch('/api/import/local', {
               method: 'POST',
               body: formData
           });
@@ -383,7 +383,7 @@ function App() {
   const fetchDriveFiles = async () => {
       setLoadingDrive(true);
       try {
-          const res = await fetch('http://localhost:3001/api/drive/list');
+          const res = await fetch('/api/drive/list');
           const data = await res.json();
           if (data.success) {
               setDriveFiles(data.files);
@@ -400,7 +400,7 @@ function App() {
   const handleImportDrive = async (fileId, fileName) => {
       setLoading(true);
       try {
-          const res = await fetch('http://localhost:3001/api/drive/import', {
+          const res = await fetch('/api/drive/import', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ fileId, fileName })
@@ -1031,7 +1031,7 @@ function App() {
                             e.target.disabled = true;
 
                             try {
-                                const response = await fetch('http://localhost:3001/api/refine', {
+                                const response = await fetch('/api/refine', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ 
