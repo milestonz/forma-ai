@@ -1,6 +1,28 @@
 const fs = require('fs');
 const path = require('path');
 const PptxGenJS = require('pptxgenjs');
+const { createCanvas, Image } = require('canvas');
+
+// Custom canvas factory for pdf.js to work with node-canvas
+class NodeCanvasFactory {
+    create(width, height) {
+        const canvas = createCanvas(width, height);
+        const context = canvas.getContext('2d');
+        return { canvas, context };
+    }
+
+    reset(canvasAndContext, width, height) {
+        canvasAndContext.canvas.width = width;
+        canvasAndContext.canvas.height = height;
+    }
+
+    destroy(canvasAndContext) {
+        canvasAndContext.canvas.width = 0;
+        canvasAndContext.canvas.height = 0;
+        canvasAndContext.canvas = null;
+        canvasAndContext.context = null;
+    }
+}
 
 // Dynamic imports for PDF rendering
 let pdfjsLib = null;
@@ -8,6 +30,8 @@ let pdfjsLib = null;
 async function initPdfJs() {
     if (!pdfjsLib) {
         pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        // Set up the worker (disable for Node.js)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
     }
     return pdfjsLib;
 }
@@ -26,14 +50,19 @@ async function convertPdfToPptx(pdfPath, outputDir) {
         // Initialize PDF.js
         const pdfjs = await initPdfJs();
 
-        // Load the PDF
+        // Load the PDF with custom canvas factory
         const data = new Uint8Array(fs.readFileSync(pdfPath));
+        const canvasFactory = new NodeCanvasFactory();
         const loadingTask = pdfjs.getDocument({
             data,
+            canvasFactory: canvasFactory,
             // Disable font loading issues
             disableFontFace: true,
             // Use standard fonts
-            standardFontDataUrl: undefined
+            standardFontDataUrl: undefined,
+            // Disable streaming for Node.js compatibility
+            isEvalSupported: false,
+            useSystemFonts: true
         });
         const pdfDocument = await loadingTask.promise;
 
@@ -57,19 +86,20 @@ async function convertPdfToPptx(pdfPath, outputDir) {
                 const viewport = page.getViewport({ scale: 2.0 });
                 console.log(`  Page ${pageNum} viewport: ${viewport.width}x${viewport.height}`);
 
-                // Create canvas using node-canvas
-                const { createCanvas } = require('canvas');
-                const canvas = createCanvas(viewport.width, viewport.height);
-                const context = canvas.getContext('2d');
+                // Create canvas using canvas factory
+                const canvasData = canvasFactory.create(viewport.width, viewport.height);
+                const canvas = canvasData.canvas;
+                const context = canvasData.context;
 
                 // Fill with white background first
                 context.fillStyle = '#FFFFFF';
                 context.fillRect(0, 0, viewport.width, viewport.height);
 
-                // Render PDF page to canvas
+                // Render PDF page to canvas with canvas factory
                 const renderContext = {
                     canvasContext: context,
                     viewport: viewport,
+                    canvasFactory: canvasFactory,
                     background: 'white'
                 };
 
