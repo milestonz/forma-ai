@@ -603,7 +603,7 @@ app.post('/api/classroom/share', async (req, res) => {
 
 
 // Catch-all: serve React app for any non-API routes
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   const indexPath = path.join(__dirname, '../client/dist/index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
