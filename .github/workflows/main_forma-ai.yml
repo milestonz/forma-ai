@@ -40,6 +40,7 @@ jobs:
           cp server/server.js deploy/server/
           cp server/package.json deploy/server/
           cp server/package-lock.json deploy/server/
+          cp server/startup.sh deploy/server/
 
           # Copy client build
           cp -r client/dist/* deploy/client/dist/
@@ -80,3 +81,9 @@ jobs:
           app-name: 'forma-ai'
           slot-name: 'Production'
           package: .
+
+      - name: Configure startup command
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config set --resource-group forma-ai_group --name forma-ai --startup-file "/home/site/wwwroot/server/startup.sh"
