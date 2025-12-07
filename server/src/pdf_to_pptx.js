@@ -30,8 +30,6 @@ let pdfjsLib = null;
 async function initPdfJs() {
     if (!pdfjsLib) {
         pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        // Set up the worker (disable for Node.js)
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
     }
     return pdfjsLib;
 }
@@ -56,12 +54,11 @@ async function convertPdfToPptx(pdfPath, outputDir) {
         const loadingTask = pdfjs.getDocument({
             data,
             canvasFactory: canvasFactory,
+            // Disable worker for Node.js
+            useWorkerFetch: false,
+            isEvalSupported: false,
             // Disable font loading issues
             disableFontFace: true,
-            // Use standard fonts
-            standardFontDataUrl: undefined,
-            // Disable streaming for Node.js compatibility
-            isEvalSupported: false,
             useSystemFonts: true
         });
         const pdfDocument = await loadingTask.promise;
