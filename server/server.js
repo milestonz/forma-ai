@@ -367,9 +367,11 @@ app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
 
         console.log(`Importing PDF: ${originalName}`);
 
-        // 1. Convert PDF to PPTX
+        // 1. Convert PDF to PPTX (text extraction method)
+        let conversionResult;
         try {
-            pptxPath = await convertPdfToPptx(filePath, path.join(__dirname, 'uploads'));
+            conversionResult = await convertPdfToPptx(filePath, path.join(__dirname, 'uploads'));
+            pptxPath = conversionResult.pptxPath;
         } catch (conversionError) {
             console.error('PDF to PPTX conversion failed:', conversionError);
             return res.status(500).json({
@@ -419,7 +421,8 @@ app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
         return res.json({
             success: true,
             presentationId,
-            link: webViewLink
+            link: webViewLink,
+            markdown: conversionResult.markdown // Return extracted markdown for editing
         });
 
     } catch (error) {
