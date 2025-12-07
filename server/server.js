@@ -31,9 +31,27 @@ const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || 'http://localhost:3001/ap
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const TOKEN_PATH = path.join(__dirname, 'token.json');
 
+// Get Google credentials from env or file
+function getGoogleCredentials() {
+  // First try environment variables
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    return {
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET
+    };
+  }
+  // Fallback to credentials.json file
+  const credPath = path.join(__dirname, 'credentials.json');
+  if (fs.existsSync(credPath)) {
+    const credentials = JSON.parse(fs.readFileSync(credPath));
+    const { client_id, client_secret } = credentials.installed || credentials.web;
+    return { client_id, client_secret };
+  }
+  throw new Error('Google credentials not found. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
+}
+
 function getOAuth2Client() {
-  const credentials = JSON.parse(fs.readFileSync(path.join(__dirname, 'credentials.json')));
-  const { client_id, client_secret } = credentials.installed || credentials.web;
+  const { client_id, client_secret } = getGoogleCredentials();
   return new OAuth2Client(client_id, client_secret, REDIRECT_URI);
 }
 
@@ -49,8 +67,7 @@ function loadTokens() {
 }
 
 function saveTokens(tokens, userInfo = {}) {
-  const credentials = JSON.parse(fs.readFileSync(path.join(__dirname, 'credentials.json')));
-  const { client_id, client_secret } = credentials.installed || credentials.web;
+  const { client_id, client_secret } = getGoogleCredentials();
   const payload = {
     type: 'authorized_user',
     client_id,
@@ -69,10 +86,16 @@ if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
 }
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// Serve React static files in production
+const clientBuildPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientBuildPath)) {
+  app.use(express.static(clientBuildPath));
+}
 
 // ============ OAuth Web Flow Endpoints ============
 
@@ -188,13 +211,6 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 // ============ End OAuth Endpoints ============
-
-// Ensure credentials exist
-const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
-if (!fs.existsSync(CREDENTIALS_PATH)) {
-    console.error('Error: credentials.json not found in server directory.');
-    process.exit(1);
-}
 
 app.post('/api/convert', async (req, res) => {
     try {
@@ -585,6 +601,16 @@ app.post('/api/classroom/share', async (req, res) => {
 });
 
 
+
+// Catch-all: serve React app for any non-API routes
+app.get('*', (req, res) => {
+  const indexPath = path.join(__dirname, '../client/dist/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('App not built. Run npm run build in client directory.');
+  }
+});
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

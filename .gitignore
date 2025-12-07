@@ -3,5 +3,6 @@ server/uploads
 server/token.json
 server/credentials.json
 server/data
+client_secret*.json
 .DS_Store
 .env
