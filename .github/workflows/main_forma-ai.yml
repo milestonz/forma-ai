@@ -82,8 +82,3 @@ jobs:
           slot-name: 'Production'
           package: .
 
-      - name: Configure startup command
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az webapp config set --resource-group forma-ai_group --name forma-ai --startup-file "/home/site/wwwroot/server/startup.sh"
