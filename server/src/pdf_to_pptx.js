@@ -28,7 +28,13 @@ async function convertPdfToPptx(pdfPath, outputDir) {
 
         // Load the PDF
         const data = new Uint8Array(fs.readFileSync(pdfPath));
-        const loadingTask = pdfjs.getDocument({ data });
+        const loadingTask = pdfjs.getDocument({
+            data,
+            // Disable font loading issues
+            disableFontFace: true,
+            // Use standard fonts
+            standardFontDataUrl: undefined
+        });
         const pdfDocument = await loadingTask.promise;
 
         const numPages = pdfDocument.numPages;
@@ -49,55 +55,71 @@ async function convertPdfToPptx(pdfPath, outputDir) {
 
                 // Calculate dimensions for good quality (scale 2x for clarity)
                 const viewport = page.getViewport({ scale: 2.0 });
+                console.log(`  Page ${pageNum} viewport: ${viewport.width}x${viewport.height}`);
 
                 // Create canvas using node-canvas
                 const { createCanvas } = require('canvas');
                 const canvas = createCanvas(viewport.width, viewport.height);
                 const context = canvas.getContext('2d');
 
+                // Fill with white background first
+                context.fillStyle = '#FFFFFF';
+                context.fillRect(0, 0, viewport.width, viewport.height);
+
                 // Render PDF page to canvas
-                await page.render({
+                const renderContext = {
                     canvasContext: context,
-                    viewport: viewport
-                }).promise;
+                    viewport: viewport,
+                    background: 'white'
+                };
+
+                await page.render(renderContext).promise;
+                console.log(`  Page ${pageNum} rendered to canvas`);
 
                 // Save as PNG
                 const imageFileName = `page_${pageNum}_${Date.now()}.png`;
                 const imagePath = path.join(outputDir, imageFileName);
                 const buffer = canvas.toBuffer('image/png');
+
+                // Verify image has content (not just white)
+                console.log(`  Page ${pageNum} image size: ${buffer.length} bytes`);
+
                 fs.writeFileSync(imagePath, buffer);
                 tempImages.push(imagePath);
+                console.log(`  Page ${pageNum} saved to: ${imagePath}`);
 
                 // Add slide with the image
                 const slide = pptx.addSlide();
 
-                // Add image to fill the slide
+                // Add image using data URI for more reliable embedding
+                const base64Image = buffer.toString('base64');
                 slide.addImage({
-                    path: imagePath,
+                    data: `image/png;base64,${base64Image}`,
                     x: 0,
                     y: 0,
-                    w: '100%',
-                    h: '100%',
-                    sizing: { type: 'contain', w: '100%', h: '100%' }
+                    w: 10,  // 10 inches (full width for 16:9)
+                    h: 5.625  // 5.625 inches (full height for 16:9)
                 });
+                console.log(`  Page ${pageNum} added to PPTX`);
 
                 // Simple markdown for this slide
                 markdownSlides.push(`# Slide ${pageNum}\n\n[Image from PDF page ${pageNum}]`);
 
             } catch (pageError) {
                 console.error(`Error rendering page ${pageNum}:`, pageError.message);
+                console.error(`  Stack:`, pageError.stack);
                 // Add a placeholder slide for failed pages
                 const slide = pptx.addSlide();
-                slide.addText(`Page ${pageNum}`, {
+                slide.addText(`Page ${pageNum} - Rendering Failed`, {
                     x: 0.5,
                     y: 2.5,
-                    w: '90%',
+                    w: 9,
                     h: 1,
                     fontSize: 24,
                     align: 'center',
                     color: '666666'
                 });
-                markdownSlides.push(`# Slide ${pageNum}\n\n[Page rendering failed]`);
+                markdownSlides.push(`# Slide ${pageNum}\n\n[Page rendering failed: ${pageError.message}]`);
             }
         }
 
