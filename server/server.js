@@ -262,7 +262,7 @@ app.get('/api/sso/services', async (req, res) => {
 });
 
 // Get service statistics (admin only - add your own admin check)
-app.get('/api/sso/stats/:serviceSlug?', async (req, res) => {
+app.get('/api/sso/stats{/:serviceSlug}', async (req, res) => {
   try {
     const serviceSlug = req.params.serviceSlug || SERVICE_SLUG;
     const { data, error } = await getServiceStats(serviceSlug);
