@@ -11,6 +11,17 @@ const themes = require('./src/theme');
 const multer = require('multer');
 const { convertToMarkdown } = require('./src/converter');
 const { convertPdfToPptx } = require('./src/pdf_to_pptx');
+const {
+  ssoAuthMiddleware,
+  ssoRequiredMiddleware,
+  getUserServices,
+  getServiceStats,
+  getAllServices,
+  registerService,
+  getUsersByOriginService,
+  SERVICE_SLUG
+} = require('./src/sso');
+const { isSupabaseConfigured } = require('./src/supabase');
 
 const { google } = require('googleapis');
 const { OAuth2Client } = require('google-auth-library');
@@ -211,6 +222,94 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 // ============ End OAuth Endpoints ============
+
+// ============ SSO Endpoints (Supabase) ============
+
+// Check SSO configuration status
+app.get('/api/sso/status', (req, res) => {
+  res.json({
+    enabled: isSupabaseConfigured(),
+    service: SERVICE_SLUG
+  });
+});
+
+// Get current user's services (requires SSO auth)
+app.get('/api/sso/user/services', ssoRequiredMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await getUserServices(req.ssoToken);
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ services: data });
+  } catch (err) {
+    console.error('Error getting user services:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all registered services
+app.get('/api/sso/services', async (req, res) => {
+  try {
+    const { data, error } = await getAllServices();
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ services: data });
+  } catch (err) {
+    console.error('Error getting services:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get service statistics (admin only - add your own admin check)
+app.get('/api/sso/stats/:serviceSlug?', async (req, res) => {
+  try {
+    const serviceSlug = req.params.serviceSlug || SERVICE_SLUG;
+    const { data, error } = await getServiceStats(serviceSlug);
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ stats: data });
+  } catch (err) {
+    console.error('Error getting service stats:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Register a new service (admin only - add your own admin check)
+app.post('/api/sso/services', async (req, res) => {
+  try {
+    const { slug, display_name, domain, description, logo_url } = req.body;
+    if (!slug || !display_name) {
+      return res.status(400).json({ error: 'slug and display_name are required' });
+    }
+    const { data, error } = await registerService({ slug, display_name, domain, description, logo_url });
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ service: data });
+  } catch (err) {
+    console.error('Error registering service:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get users by origin service (admin only)
+app.get('/api/sso/users/:serviceSlug', async (req, res) => {
+  try {
+    const { serviceSlug } = req.params;
+    const { data, error } = await getUsersByOriginService(serviceSlug);
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ users: data });
+  } catch (err) {
+    console.error('Error getting users by origin:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ End SSO Endpoints ============
 
 app.post('/api/convert', async (req, res) => {
     try {
