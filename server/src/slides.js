@@ -3,7 +3,13 @@ const path = require('path');
 const { google } = require('googleapis');
 const { authenticate } = require('@google-cloud/local-auth');
 
-const SCOPES = ['https://www.googleapis.com/auth/presentations', 'https://www.googleapis.com/auth/drive'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/presentations', 
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/classroom.courses.readonly',
+  'https://www.googleapis.com/auth/classroom.courseworkmaterials',
+  'https://www.googleapis.com/auth/classroom.announcements'
+];
 const TOKEN_PATH = path.join(process.cwd(), 'token.json');
 const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json');
 
@@ -89,9 +95,11 @@ async function createPresentation(auth, title) {
  * @param {google.auth.OAuth2} auth - The authenticated Google OAuth2 client.
  * @param {string} presentationId - The ID of the presentation.
  * @param {Array<{title: string, content: Array<{text: string, boldRanges: Array<{start: number, end: number}>}>}>} slides - Array of slide objects.
- * @param {object} theme - The theme configuration.
+ * @param {object} globalTheme - The default theme configuration.
+ * @param {object} slideThemes - Map of slide index to theme key.
+ * @param {object} allThemes - All available themes.
  */
-async function addSlides(auth, presentationId, slides, theme) {
+async function addSlides(auth, presentationId, slides, globalTheme, slideThemes = {}, allThemes = {}) {
   const slidesService = google.slides({ version: 'v1', auth });
   const requests = [];
   
@@ -100,7 +108,11 @@ async function addSlides(auth, presentationId, slides, theme) {
   const HEADER_HEIGHT = 50;
   const FOOTER_HEIGHT = 30;
 
-  for (const slide of slides) {
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i];
+    const themeKey = slideThemes[i];
+    const theme = themeKey && allThemes[themeKey] ? allThemes[themeKey] : globalTheme;
+
     const slideId = `slide_${Math.random().toString(36).substr(2, 9)}`;
     const headerId = `header_${Math.random().toString(36).substr(2, 9)}`;
     const footerId = `footer_${Math.random().toString(36).substr(2, 9)}`;

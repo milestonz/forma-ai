@@ -11,9 +11,57 @@ const themes = require('./src/theme');
 const multer = require('multer');
 const { convertToMarkdown } = require('./src/converter');
 const { convertPdfToPptx } = require('./src/pdf_to_pptx');
+
 const { google } = require('googleapis');
+const { OAuth2Client } = require('google-auth-library');
 
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
+
+// OAuth2 Web Flow Configuration
+const SCOPES = [
+  'https://www.googleapis.com/auth/presentations',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/classroom.courses.readonly',
+  'https://www.googleapis.com/auth/classroom.courseworkmaterials',
+  'https://www.googleapis.com/auth/classroom.announcements',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/userinfo.email'
+];
+const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || 'http://localhost:3001/api/auth/callback';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const TOKEN_PATH = path.join(__dirname, 'token.json');
+
+function getOAuth2Client() {
+  const credentials = JSON.parse(fs.readFileSync(path.join(__dirname, 'credentials.json')));
+  const { client_id, client_secret } = credentials.installed || credentials.web;
+  return new OAuth2Client(client_id, client_secret, REDIRECT_URI);
+}
+
+function loadTokens() {
+  try {
+    if (fs.existsSync(TOKEN_PATH)) {
+      return JSON.parse(fs.readFileSync(TOKEN_PATH));
+    }
+  } catch (err) {
+    console.error('Error loading tokens:', err);
+  }
+  return null;
+}
+
+function saveTokens(tokens, userInfo = {}) {
+  const credentials = JSON.parse(fs.readFileSync(path.join(__dirname, 'credentials.json')));
+  const { client_id, client_secret } = credentials.installed || credentials.web;
+  const payload = {
+    type: 'authorized_user',
+    client_id,
+    client_secret,
+    refresh_token: tokens.refresh_token,
+    access_token: tokens.access_token,
+    expiry_date: tokens.expiry_date,
+    user: userInfo
+  };
+  fs.writeFileSync(TOKEN_PATH, JSON.stringify(payload));
+}
 
 // Ensure uploads directory exists
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
@@ -26,6 +74,121 @@ const PORT = 3001;
 app.use(cors());
 app.use(bodyParser.json());
 
+// ============ OAuth Web Flow Endpoints ============
+
+// Get OAuth URL for login
+app.get('/api/auth/url', (req, res) => {
+  const oauth2Client = getOAuth2Client();
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+    prompt: 'consent'
+  });
+  res.json({ url: authUrl });
+});
+
+// Handle OAuth callback
+app.get('/api/auth/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) {
+    return res.status(400).send('Authorization code missing');
+  }
+
+  try {
+    const oauth2Client = getOAuth2Client();
+    const { tokens } = await oauth2Client.getToken(code);
+
+    // Set credentials with access_token for the API call
+    oauth2Client.setCredentials({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expiry_date: tokens.expiry_date
+    });
+
+    // Get user info using direct API call
+    let userInfo = { name: 'User', email: '' };
+    try {
+      const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${tokens.access_token}`
+        }
+      });
+      if (userInfoRes.ok) {
+        const data = await userInfoRes.json();
+        userInfo = {
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          picture: data.picture
+        };
+      }
+    } catch (userInfoError) {
+      console.error('Failed to get user info:', userInfoError.message);
+      // Continue with default user info
+    }
+
+    // Save tokens with user info
+    saveTokens(tokens, userInfo);
+
+    // Redirect to frontend with success
+    res.redirect(`${FRONTEND_URL}?auth=success`);
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.redirect(`${FRONTEND_URL}?auth=error`);
+  }
+});
+
+// Check auth status
+app.get('/api/auth/status', async (req, res) => {
+  const tokenData = loadTokens();
+
+  if (!tokenData || !tokenData.refresh_token) {
+    return res.json({ authenticated: false });
+  }
+
+  try {
+    const oauth2Client = getOAuth2Client();
+    oauth2Client.setCredentials({
+      refresh_token: tokenData.refresh_token,
+      access_token: tokenData.access_token,
+      expiry_date: tokenData.expiry_date
+    });
+
+    // Refresh if expired
+    if (tokenData.expiry_date && Date.now() >= tokenData.expiry_date) {
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      saveTokens(credentials, tokenData.user);
+    }
+
+    res.json({
+      authenticated: true,
+      user: tokenData.user || { name: 'User', email: '' }
+    });
+  } catch (error) {
+    console.error('Auth status check error:', error);
+    // Token invalid, clear it
+    if (fs.existsSync(TOKEN_PATH)) {
+      fs.unlinkSync(TOKEN_PATH);
+    }
+    res.json({ authenticated: false });
+  }
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  try {
+    if (fs.existsSync(TOKEN_PATH)) {
+      fs.unlinkSync(TOKEN_PATH);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ End OAuth Endpoints ============
+
 // Ensure credentials exist
 const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
 if (!fs.existsSync(CREDENTIALS_PATH)) {
@@ -36,6 +199,7 @@ if (!fs.existsSync(CREDENTIALS_PATH)) {
 app.post('/api/convert', async (req, res) => {
     try {
         const { markdown, title, themeId } = req.body;
+        console.log(`Received conversion request. ThemeId: ${themeId}`);
         if (!markdown) {
             return res.status(400).json({ error: 'Markdown content is required' });
         }
@@ -56,8 +220,9 @@ app.post('/api/convert', async (req, res) => {
         console.log(`Creating presentation: ${title || 'Converted Presentation'}...`);
         const presentationId = await createPresentation(auth, title || 'Converted Presentation');
 
-        console.log(`Adding slides with theme: ${selectedTheme.name}...`);
-        await addSlides(auth, presentationId, slides, selectedTheme);
+        const slideThemes = req.body.slideThemes || {};
+        console.log(`Adding slides with global theme: ${selectedTheme.name}...`);
+        await addSlides(auth, presentationId, slides, selectedTheme, slideThemes, themes);
 
         // Cleanup
         fs.unlinkSync(tempFilePath);
@@ -151,8 +316,9 @@ app.post('/api/import/local', upload.single('file'), async (req, res) => {
         }
         
         const filePath = req.file.path;
-        const originalName = req.file.originalname;
-        
+        // Use filename from form field (properly encoded) or fallback to originalname
+        const originalName = req.body.filename || req.file.originalname;
+
         console.log(`Importing local file: ${originalName}`);
         
         const markdown = await convertToMarkdown(filePath, originalName);
@@ -170,20 +336,39 @@ app.post('/api/import/local', upload.single('file'), async (req, res) => {
 });
 
 app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
+    let filePath = null;
+    let pptxPath = null;
+
     try {
         if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
+            return res.status(400).json({ success: false, error: 'No file uploaded' });
         }
 
-        const filePath = req.file.path;
-        const originalName = req.file.originalname;
+        filePath = req.file.path;
+        // Use filename from form field (properly encoded) or fallback to originalname
+        const originalName = req.body.filename || req.file.originalname;
         const baseName = path.basename(originalName, path.extname(originalName));
 
         console.log(`Importing PDF: ${originalName}`);
 
         // 1. Convert PDF to PPTX
-        const pptxPath = await convertPdfToPptx(filePath, path.join(__dirname, 'uploads'));
-        
+        try {
+            pptxPath = await convertPdfToPptx(filePath, path.join(__dirname, 'uploads'));
+        } catch (conversionError) {
+            console.error('PDF to PPTX conversion failed:', conversionError);
+            return res.status(500).json({
+                success: false,
+                error: `PDF conversion failed: ${conversionError.message || 'Unknown error'}`
+            });
+        }
+
+        if (!pptxPath || !fs.existsSync(pptxPath)) {
+            return res.status(500).json({
+                success: false,
+                error: 'PDF conversion failed: PPTX file was not created'
+            });
+        }
+
         // 2. Upload to Drive as Google Slides
         console.log('Authenticating with Google...');
         const auth = await authorize();
@@ -194,7 +379,7 @@ app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
             name: baseName, // Use original filename as title
             mimeType: 'application/vnd.google-apps.presentation' // Convert to Google Slides
         };
-        
+
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             body: fs.createReadStream(pptxPath)
@@ -212,11 +397,11 @@ app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
         console.log(`Uploaded to Drive. ID: ${presentationId}`);
 
         // Cleanup
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        if (fs.existsSync(pptxPath)) fs.unlinkSync(pptxPath);
+        if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        if (pptxPath && fs.existsSync(pptxPath)) fs.unlinkSync(pptxPath);
 
-        res.json({ 
-            success: true, 
+        return res.json({
+            success: true,
             presentationId,
             link: webViewLink
         });
@@ -224,8 +409,11 @@ app.post('/api/import/pdf', upload.single('file'), async (req, res) => {
     } catch (error) {
         console.error('PDF Import error:', error);
         // Cleanup
-        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(500).json({ error: error.message });
+        if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        if (pptxPath && fs.existsSync(pptxPath)) fs.unlinkSync(pptxPath);
+
+        const errorMessage = error && error.message ? error.message : 'Unknown error occurred';
+        return res.status(500).json({ success: false, error: errorMessage });
     }
 });
 
@@ -322,6 +510,81 @@ app.post('/api/drive/import', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// --- Google Classroom Endpoints ---
+
+app.get('/api/classroom/courses', async (req, res) => {
+    try {
+        const auth = await authorize();
+        const classroom = google.classroom({ version: 'v1', auth });
+        
+        const response = await classroom.courses.list({
+            courseStates: ['ACTIVE'],
+            teacherId: 'me' // Only courses where the user is a teacher
+        });
+        
+        // If no courses found, response.data.courses might be undefined
+        const courses = response.data.courses || [];
+        res.json({ success: true, courses });
+    } catch (error) {
+        console.error('Classroom list error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/classroom/share', async (req, res) => {
+    try {
+        const { courseId, type, text, link } = req.body;
+        
+        if (!courseId || !type || !link) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const auth = await authorize();
+        const classroom = google.classroom({ version: 'v1', auth });
+        
+        const linkMaterial = {
+            link: {
+                url: link
+            }
+        };
+
+        if (type === 'material') {
+            const response = await classroom.courses.courseWorkMaterials.create({
+                courseId,
+                requestBody: {
+                    title: text || 'New Presentation',
+                    description: `Created with MD2Slides AI`,
+                    materials: [
+                        { link: linkMaterial.link }
+                    ],
+                    state: 'PUBLISHED'
+                }
+            });
+            res.json({ success: true, id: response.data.id, link: response.data.alternateLink });
+        } else if (type === 'announcement') {
+            const response = await classroom.courses.announcements.create({
+                courseId,
+                requestBody: {
+                    text: text || 'Check out this presentation!',
+                    materials: [
+                        { link: linkMaterial.link }
+                    ],
+                    state: 'PUBLISHED'
+                }
+            });
+            res.json({ success: true, id: response.data.id, link: response.data.alternateLink });
+        } else {
+            res.status(400).json({ error: 'Invalid share type' });
+        }
+
+    } catch (error) {
+        console.error('Classroom share error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

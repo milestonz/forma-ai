@@ -258,6 +258,29 @@ const themes = {
       fontSize: { magnitude: 14, unit: 'PT' },
       foregroundColor: { opaqueColor: { rgbColor: { red: 0.2, green: 0.2, blue: 0.2 } } }
     }
+  },
+  highlight_issue: {
+    name: "Highlight Issue",
+    category: "Pitch Deck",
+    backgroundColor: { rgbColor: { red: 0.0, green: 0.0, blue: 0.0 } }, // Black
+    primaryColor: { rgbColor: { red: 0.0, green: 0.0, blue: 0.0 } }, // Black Header
+    cardBackgroundColor: { rgbColor: { red: 0.0, green: 0.0, blue: 0.0 } }, // Black Card
+    headerTextStyle: {
+      fontFamily: 'Montserrat',
+      fontSize: { magnitude: 28, unit: 'PT' },
+      bold: true,
+      foregroundColor: { opaqueColor: { rgbColor: { red: 1.0, green: 1.0, blue: 1.0 } } } // White Text
+    },
+    footerTextStyle: {
+      fontFamily: 'Roboto',
+      fontSize: { magnitude: 10, unit: 'PT' },
+      foregroundColor: { opaqueColor: { rgbColor: { red: 1.0, green: 1.0, blue: 1.0 } } } // White Text
+    },
+    bodyStyle: {
+      fontFamily: 'Roboto',
+      fontSize: { magnitude: 14, unit: 'PT' },
+      foregroundColor: { opaqueColor: { rgbColor: { red: 1.0, green: 1.0, blue: 1.0 } } } // White Text
+    }
   }
 };
 

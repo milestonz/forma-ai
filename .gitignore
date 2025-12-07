@@ -1,3 +1,7 @@
 node_modules
 server/uploads
+server/token.json
+server/credentials.json
+server/data
 .DS_Store
+.env

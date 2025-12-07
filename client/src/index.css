@@ -1,68 +1,180 @@
+/* ============================================
+   FORMA Design System: The Architect's Desk
+   "Less Interface, More Content"
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Noto+Serif+KR:wght@400;500;600;700&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  /* === FORMA Color System: "Night & Day of Knowledge" === */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* Primary Palette (Brand Identity) */
+  --forma-navy: #1A233A;              /* Deep Knowledge - headers, buttons, brand */
+  --forma-navy-light: #2A3654;        /* Lighter navy for hover states */
+  --forma-navy-dark: #0F1524;         /* Darker navy for pressed states */
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --forma-clay: #F4F5F7;              /* Sculpt Clay - backgrounds, sidebars */
+  --forma-clay-warm: #FAFBFC;         /* Warmer clay for cards */
+  --forma-paper: #FFFFFF;             /* Pure white for editor */
+
+  /* Accent Palette (Action & Highlight) */
+  --forma-spark: #FF6B35;             /* Spark Orange - transform button, accents */
+  --forma-spark-light: #FF8A5C;       /* Lighter spark for hover */
+  --forma-spark-dark: #E55A28;        /* Darker spark for pressed */
+
+  --forma-mint: #E2F1EF;              /* Guide Mint - selection, info boxes */
+  --forma-mint-deep: #C5E4E0;         /* Deeper mint for hover */
+
+  /* Neutral Palette */
+  --forma-text-primary: #1A233A;      /* Primary text (same as navy) */
+  --forma-text-secondary: #5A6478;    /* Secondary text */
+  --forma-text-tertiary: #8B95A8;     /* Muted text */
+  --forma-text-inverse: #FFFFFF;      /* Text on dark backgrounds */
+
+  --forma-border: #E1E4EA;            /* Subtle borders */
+  --forma-border-strong: #C8CDD6;     /* Stronger borders */
+  --forma-divider: #EBEEF2;           /* Divider lines */
+
+  /* Semantic Colors */
+  --forma-success: #2E7D32;
+  --forma-warning: #ED6C02;
+  --forma-error: #D32F2F;
+  --forma-info: #0288D1;
+
+  /* === Typography System: "Logic & Art" === */
+
+  /* UI & Editor Font (The Logic) */
+  --forma-font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Preview & Heading Font (The Art) */
+  --forma-font-display: 'Lora', 'Noto Serif KR', Georgia, serif;
+
+  /* Monospace for code/markdown */
+  --forma-font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+  /* Type Scale */
+  --forma-text-xs: 0.75rem;     /* 12px */
+  --forma-text-sm: 0.875rem;    /* 14px */
+  --forma-text-base: 1rem;      /* 16px */
+  --forma-text-lg: 1.125rem;    /* 18px */
+  --forma-text-xl: 1.25rem;     /* 20px */
+  --forma-text-2xl: 1.5rem;     /* 24px */
+  --forma-text-3xl: 1.875rem;   /* 30px */
+  --forma-text-4xl: 2.25rem;    /* 36px */
+
+  /* Font Weights */
+  --forma-weight-light: 300;
+  --forma-weight-regular: 400;
+  --forma-weight-medium: 500;
+  --forma-weight-semibold: 600;
+  --forma-weight-bold: 700;
+
+  /* Line Heights */
+  --forma-leading-tight: 1.25;
+  --forma-leading-normal: 1.5;
+  --forma-leading-relaxed: 1.75;
+
+  /* === Spacing (8px grid) === */
+  --forma-space-1: 4px;
+  --forma-space-2: 8px;
+  --forma-space-3: 12px;
+  --forma-space-4: 16px;
+  --forma-space-5: 20px;
+  --forma-space-6: 24px;
+  --forma-space-8: 32px;
+  --forma-space-10: 40px;
+  --forma-space-12: 48px;
+  --forma-space-16: 64px;
+
+  /* === Border Radius === */
+  --forma-radius-sm: 4px;
+  --forma-radius-md: 8px;
+  --forma-radius-lg: 12px;
+  --forma-radius-xl: 16px;
+  --forma-radius-2xl: 24px;
+  --forma-radius-full: 9999px;
+
+  /* === Shadows (Deep, floating cards) === */
+  --forma-shadow-sm: 0 1px 2px rgba(26, 35, 58, 0.05);
+  --forma-shadow-md: 0 4px 6px -1px rgba(26, 35, 58, 0.08), 0 2px 4px -1px rgba(26, 35, 58, 0.04);
+  --forma-shadow-lg: 0 10px 15px -3px rgba(26, 35, 58, 0.1), 0 4px 6px -2px rgba(26, 35, 58, 0.05);
+  --forma-shadow-xl: 0 20px 25px -5px rgba(26, 35, 58, 0.15), 0 10px 10px -5px rgba(26, 35, 58, 0.08);
+  --forma-shadow-2xl: 0 25px 50px -12px rgba(26, 35, 58, 0.25);
+  --forma-shadow-card: 0 8px 30px rgba(26, 35, 58, 0.12);
+
+  /* === Transitions === */
+  --forma-duration-fast: 150ms;
+  --forma-duration-normal: 250ms;
+  --forma-duration-slow: 400ms;
+  --forma-easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --forma-easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --forma-easing-out: cubic-bezier(0, 0, 0.2, 1);
+  --forma-easing-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+/* === Global Reset === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
-a:hover {
-  color: #535bf2;
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  font-family: var(--forma-font-ui);
+  font-size: var(--forma-text-base);
+  font-weight: var(--forma-weight-regular);
+  line-height: var(--forma-leading-normal);
+  color: var(--forma-text-primary);
+  background-color: var(--forma-clay);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* === Focus Visible === */
+:focus-visible {
+  outline: 2px solid var(--forma-spark);
+  outline-offset: 2px;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+/* === Selection === */
+::selection {
+  background-color: var(--forma-mint);
+  color: var(--forma-navy);
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* === Scrollbar (Minimal) === */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--forma-border-strong);
+  border-radius: var(--forma-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--forma-text-tertiary);
+}
+
+/* === Links === */
+a {
+  color: var(--forma-spark);
+  text-decoration: none;
+  transition: color var(--forma-duration-fast) var(--forma-easing-default);
+}
+
+a:hover {
+  color: var(--forma-spark-dark);
 }
