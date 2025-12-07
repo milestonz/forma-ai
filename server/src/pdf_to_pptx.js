@@ -1,59 +1,38 @@
 const fs = require('fs');
 const path = require('path');
-const pdfParse = require('pdf-parse');
 const PptxGenJS = require('pptxgenjs');
-const { extractTextFromPdfWithGemini, isImageBasedPdf } = require('./gemini_ocr');
+
+// Dynamic imports for PDF rendering
+let pdfjsLib = null;
+
+async function initPdfJs() {
+    if (!pdfjsLib) {
+        pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    }
+    return pdfjsLib;
+}
 
 /**
- * Converts a PDF file to a PPTX file using text extraction.
- * Falls back to Gemini OCR for image-based PDFs.
+ * Converts a PDF file to a PPTX file by rendering each page as an image.
  * @param {string} pdfPath - Path to the source PDF file.
  * @param {string} outputDir - Directory to save the generated PPTX file.
- * @returns {Promise<{pptxPath: string, markdown: string}>} - Path to PPTX and extracted markdown.
+ * @returns {Promise<{pptxPath: string, markdown: string}>} - Path to PPTX and basic markdown.
  */
 async function convertPdfToPptx(pdfPath, outputDir) {
     const baseName = path.basename(pdfPath, path.extname(pdfPath));
+    const tempImages = [];
 
     try {
-        // First, try standard text extraction
-        const dataBuffer = fs.readFileSync(pdfPath);
-        const data = await pdfParse(dataBuffer);
+        // Initialize PDF.js
+        const pdfjs = await initPdfJs();
 
-        const numPages = data.numpages || 1;
-        const fullText = data.text || '';
+        // Load the PDF
+        const data = new Uint8Array(fs.readFileSync(pdfPath));
+        const loadingTask = pdfjs.getDocument({ data });
+        const pdfDocument = await loadingTask.promise;
 
-        console.log(`PDF parsed: ${numPages} pages, ${fullText.length} chars`);
-
-        let pages = [];
-
-        // Check if this is an image-based PDF (very little text extracted)
-        if (isImageBasedPdf(fullText, numPages)) {
-            console.log('Detected image-based PDF, using Gemini OCR...');
-
-            // Check if Gemini API key is available
-            if (process.env.GEMINI_API_KEY) {
-                try {
-                    pages = await extractTextFromPdfWithGemini(pdfPath);
-                    console.log(`Gemini OCR extracted ${pages.length} pages`);
-                } catch (ocrError) {
-                    console.error('Gemini OCR failed, falling back to basic extraction:', ocrError.message);
-                    pages = extractPagesFromText(fullText, numPages);
-                }
-            } else {
-                console.log('GEMINI_API_KEY not set, using basic text extraction');
-                pages = extractPagesFromText(fullText, numPages);
-            }
-        } else {
-            // Use standard text extraction
-            pages = extractPagesFromText(fullText, numPages);
-        }
-
-        // Ensure we have at least one page
-        if (pages.length === 0) {
-            pages = ['No text content extracted from this PDF'];
-        }
-
-        console.log(`Creating PPTX with ${pages.length} slides`);
+        const numPages = pdfDocument.numPages;
+        console.log(`PDF loaded: ${numPages} pages`);
 
         // Create PPTX
         const pptx = new PptxGenJS();
@@ -61,65 +40,65 @@ async function convertPdfToPptx(pdfPath, outputDir) {
 
         const markdownSlides = [];
 
-        for (let i = 0; i < pages.length; i++) {
-            const pageText = pages[i].trim();
-            const isCover = pageText.startsWith('[COVER]');
-            const cleanText = pageText.replace('[COVER]', '').trim();
+        // Render each page as an image
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            console.log(`Rendering page ${pageNum}/${numPages}...`);
 
-            const lines = cleanText.split('\n').map(l => l.trim()).filter(l => l);
+            try {
+                const page = await pdfDocument.getPage(pageNum);
 
-            if (lines.length === 0) {
-                lines.push(`Slide ${i + 1}`);
-            }
+                // Calculate dimensions for good quality (scale 2x for clarity)
+                const viewport = page.getViewport({ scale: 2.0 });
 
-            const slide = pptx.addSlide();
+                // Create canvas using node-canvas
+                const { createCanvas } = require('canvas');
+                const canvas = createCanvas(viewport.width, viewport.height);
+                const context = canvas.getContext('2d');
 
-            // First line as title
-            const title = lines[0];
-            slide.addText(title, {
-                x: 0.5,
-                y: isCover ? 2 : 0.5,
-                w: '90%',
-                h: 1,
-                fontSize: isCover ? 36 : 28,
-                bold: true,
-                color: '1a1a2e',
-                align: isCover ? 'center' : 'left'
-            });
+                // Render PDF page to canvas
+                await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                }).promise;
 
-            // Rest as content
-            const content = lines.slice(1);
-            if (content.length > 0) {
-                const bulletText = content.slice(0, 12).map(line => {
-                    // Check if line starts with bullet-like characters
-                    const cleanLine = line.replace(/^[-•*]\s*/, '');
-                    return {
-                        text: cleanLine.length > 120 ? cleanLine.substring(0, 120) + '...' : cleanLine,
-                        options: { bullet: !isCover, paraSpaceAfter: 6 }
-                    };
+                // Save as PNG
+                const imageFileName = `page_${pageNum}_${Date.now()}.png`;
+                const imagePath = path.join(outputDir, imageFileName);
+                const buffer = canvas.toBuffer('image/png');
+                fs.writeFileSync(imagePath, buffer);
+                tempImages.push(imagePath);
+
+                // Add slide with the image
+                const slide = pptx.addSlide();
+
+                // Add image to fill the slide
+                slide.addImage({
+                    path: imagePath,
+                    x: 0,
+                    y: 0,
+                    w: '100%',
+                    h: '100%',
+                    sizing: { type: 'contain', w: '100%', h: '100%' }
                 });
 
-                slide.addText(bulletText, {
+                // Simple markdown for this slide
+                markdownSlides.push(`# Slide ${pageNum}\n\n[Image from PDF page ${pageNum}]`);
+
+            } catch (pageError) {
+                console.error(`Error rendering page ${pageNum}:`, pageError.message);
+                // Add a placeholder slide for failed pages
+                const slide = pptx.addSlide();
+                slide.addText(`Page ${pageNum}`, {
                     x: 0.5,
-                    y: isCover ? 3.2 : 1.6,
+                    y: 2.5,
                     w: '90%',
-                    h: 4,
-                    fontSize: isCover ? 18 : 16,
-                    color: '333333',
-                    valign: 'top',
-                    align: isCover ? 'center' : 'left'
+                    h: 1,
+                    fontSize: 24,
+                    align: 'center',
+                    color: '666666'
                 });
+                markdownSlides.push(`# Slide ${pageNum}\n\n[Page rendering failed]`);
             }
-
-            // Build markdown
-            let slideMarkdown = `# ${title}`;
-            if (content.length > 0) {
-                slideMarkdown += '\n\n' + content.slice(0, 12).map(line => {
-                    const cleanLine = line.replace(/^[-•*]\s*/, '');
-                    return `- ${cleanLine}`;
-                }).join('\n');
-            }
-            markdownSlides.push(slideMarkdown);
         }
 
         // Save PPTX
@@ -129,42 +108,33 @@ async function convertPdfToPptx(pdfPath, outputDir) {
 
         console.log(`PPTX created at: ${pptxPath}`);
 
+        // Cleanup temp images
+        for (const imgPath of tempImages) {
+            try {
+                if (fs.existsSync(imgPath)) {
+                    fs.unlinkSync(imgPath);
+                }
+            } catch (e) {
+                console.error(`Failed to cleanup temp image: ${imgPath}`);
+            }
+        }
+
         const markdown = markdownSlides.join('\n\n---\n\n');
         return { pptxPath, markdown };
 
     } catch (err) {
+        // Cleanup temp images on error
+        for (const imgPath of tempImages) {
+            try {
+                if (fs.existsSync(imgPath)) {
+                    fs.unlinkSync(imgPath);
+                }
+            } catch (e) {}
+        }
+
         console.error('PDF Processing Error:', err);
         throw err;
     }
-}
-
-/**
- * Extract pages from text using standard methods
- */
-function extractPagesFromText(fullText, numPages) {
-    // Try to split by form feed characters (page breaks)
-    let pages = fullText.split(/\f/).filter(page => page.trim());
-
-    // If no page breaks found, try to split evenly
-    if (pages.length <= 1 && numPages > 1 && fullText.length > 0) {
-        const avgCharsPerPage = Math.ceil(fullText.length / numPages);
-        pages = [];
-        for (let i = 0; i < numPages; i++) {
-            const start = i * avgCharsPerPage;
-            const end = Math.min((i + 1) * avgCharsPerPage, fullText.length);
-            const pageText = fullText.slice(start, end).trim();
-            if (pageText) {
-                pages.push(pageText);
-            }
-        }
-    }
-
-    // If still no pages, use the whole text as one page
-    if (pages.length === 0 && fullText.trim()) {
-        pages = [fullText.trim()];
-    }
-
-    return pages;
 }
 
 module.exports = { convertPdfToPptx };
