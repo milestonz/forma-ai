@@ -1,35 +1,46 @@
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
-const { authenticate } = require('@google-cloud/local-auth');
 
 const SCOPES = [
-  'https://www.googleapis.com/auth/presentations', 
+  'https://www.googleapis.com/auth/presentations',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.courseworkmaterials',
   'https://www.googleapis.com/auth/classroom.announcements'
 ];
-const TOKEN_PATH = path.join(process.cwd(), 'token.json');
-const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json');
+const TOKEN_PATH = path.join(__dirname, '../token.json');
 
 /**
- * Load or request or authorization to call APIs.
- *
+ * Get Google credentials from environment variables or credentials.json file
+ */
+function getGoogleCredentials() {
+  // First try environment variables
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    return {
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET
+    };
+  }
+  // Fallback to credentials.json file
+  const credPath = path.join(__dirname, '../credentials.json');
+  if (fs.existsSync(credPath)) {
+    const credentials = JSON.parse(fs.readFileSync(credPath));
+    const { client_id, client_secret } = credentials.installed || credentials.web;
+    return { client_id, client_secret };
+  }
+  throw new Error('Google credentials not found. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
+}
+
+/**
+ * Load or request authorization to call APIs.
  */
 async function authorize() {
   let client = loadSavedCredentialsIfExist();
   if (client) {
     return client;
   }
-  client = await authenticate({
-    scopes: SCOPES,
-    keyfilePath: CREDENTIALS_PATH,
-  });
-  if (client.credentials) {
-    saveCredentials(client);
-  }
-  return client;
+  throw new Error('No saved credentials found. Please login first.');
 }
 
 /**
@@ -39,31 +50,36 @@ async function authorize() {
  */
 function loadSavedCredentialsIfExist() {
   try {
-    const content = fs.readFileSync(TOKEN_PATH);
-    const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials);
+    if (fs.existsSync(TOKEN_PATH)) {
+      const content = fs.readFileSync(TOKEN_PATH);
+      const credentials = JSON.parse(content);
+      return google.auth.fromJSON(credentials);
+    }
   } catch (err) {
-    return null;
+    console.error('Error loading saved credentials:', err);
   }
+  return null;
 }
 
 /**
- * Serializes credentials to a file compatible with GoogleAUth.
+ * Serializes credentials to a file compatible with GoogleAuth.
  *
  * @param {OAuth2Client} client
  * @return {Promise<void>}
  */
 async function saveCredentials(client) {
-  const content = fs.readFileSync(CREDENTIALS_PATH);
-  const keys = JSON.parse(content);
-  const key = keys.installed || keys.web;
-  const payload = JSON.stringify({
-    type: 'authorized_user',
-    client_id: key.client_id,
-    client_secret: key.client_secret,
-    refresh_token: client.credentials.refresh_token,
-  });
-  fs.writeFileSync(TOKEN_PATH, payload);
+  try {
+    const { client_id, client_secret } = getGoogleCredentials();
+    const payload = JSON.stringify({
+      type: 'authorized_user',
+      client_id,
+      client_secret,
+      refresh_token: client.credentials.refresh_token,
+    });
+    fs.writeFileSync(TOKEN_PATH, payload);
+  } catch (err) {
+    console.error('Error saving credentials:', err);
+  }
 }
 
 /**
